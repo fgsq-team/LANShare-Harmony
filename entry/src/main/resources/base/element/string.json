@@ -1,0 +1,14 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "LANShare 局域网文件传输" },
+    { "name": "EntryAbility_desc", "value": "LANShare 主入口" },
+    { "name": "EntryAbility_label", "value": "LANShare" },
+    { "name": "reason_internet", "value": "用于在局域网内发现设备并收发文件" },
+    { "name": "reason_network_info", "value": "用于获取本机在局域网中的 IP 地址" },
+    { "name": "reason_camera", "value": "用于扫描二维码添加设备" },
+    { "name": "reason_nfc", "value": "用于通过 NFC 配对设备" },
+    { "name": "reason_location", "value": "用于申请局域网相关网络能力" },
+    { "name": "reason_vibrate", "value": "新消息到达时震动提醒" },
+    { "name": "reason_download", "value": "把接收到的文件保存到系统「下载」目录" }
+  ]
+}

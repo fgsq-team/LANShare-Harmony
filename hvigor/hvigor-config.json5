@@ -1,0 +1,33 @@
+{
+  // hvigor 构建系统自身的配置。字段受 hvigor-config-schema.json 约束：
+  // 只有 modelVersion / dependencies / execution / logging / debugging /
+  // nodeOptions / javaOptions / parameterFile / properties 是合法 key。
+  //
+  // modelVersion 决定用哪一版 hvigor 引擎：7.0.0 对应 HarmonyOS 7（API 26）工具链。
+  // 本机命令行工具链自带 hvigor 6.26.8 + @ohos/hvigor-ohos-plugin 6.26.8，
+  // 因此 dependencies 留空（不额外拉取插件），避免离线环境卡在下载环节。
+  "modelVersion": "7.0.0",
+  "dependencies": {},
+
+  "execution": {
+    // 命令行/CI 场景关闭常驻 daemon，构建结束即退出，不留后台进程
+    "daemon": false,
+    "parallel": true,
+    "incremental": true,
+    // hvigorfile.ts 的类型检查（关掉可提速；首次排错时可临时打开）
+    "typeCheck": false
+  },
+
+  "logging": {
+    "level": "info"
+  },
+
+  "debugging": {
+    "stacktrace": false
+  },
+
+  "properties": {
+    // 未配置签名时也把 HAP 打出来（本机无签名证书，先出未签名包用于排错）
+    "enableSignTask": false
+  }
+}

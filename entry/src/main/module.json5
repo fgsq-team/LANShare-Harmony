@@ -1,0 +1,120 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "phone",
+      "tablet",
+      "2in1"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:ic_launcher",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:ic_launcher",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+
+        // 刻意不声明 backgroundModes。
+        // 原方案挂的是 dataTransfer 长时任务，带「10 分钟无进度更新即取消 +
+        // 进度必须走实况窗」的硬约束。vivi 2026-09-30 决策：不做后台保活，
+        // 需要传输时手动打开应用，因此这里整体移除，同时也省掉一个授权弹窗。
+        "skills": [
+          {
+            "entities": ["entity.system.home"],
+            "actions": ["action.system.home"]
+          }
+        ]
+      }
+    ],
+
+    // ----------------------------------------------------------------------
+    // 权限：Android 侧 20+ 权限的鸿蒙等价映射，完整对照见 docs/迁移对照表.md
+    // 已按「不做后台保活」精简掉 ohos.permission.KEEP_BACKGROUND_RUNNING
+    //
+    // 注意：requestPermissions 的每一项只允许 name / reason / usedScene /
+    // requiredFeature 四个键，写 "//": "..." 会被 schema 拒掉，注释只能用
+    // JSON5 原生的 // 行注释。
+    // ----------------------------------------------------------------------
+    "requestPermissions": [
+      {
+        // Socket（TCP Server / UDP 广播 / 组播）+ HTTP 客户端 -> Android INTERNET
+        "name": "ohos.permission.INTERNET",
+        "reason": "$string:reason_internet",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 读取网络状态、获取本机 IP 与子网掩码
+        // -> Android ACCESS_WIFI_STATE + ACCESS_NETWORK_STATE
+        "name": "ohos.permission.GET_NETWORK_INFO",
+        "reason": "$string:reason_network_info",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 扫码添加设备 -> Android CAMERA（保留，B2 批次接入 ScanKit 时使用）
+        "name": "ohos.permission.CAMERA",
+        "reason": "$string:reason_camera",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        // NFC 设备配对 -> Android NFC（保留，B2 批次使用）
+        "name": "ohos.permission.NFC_TAG",
+        "reason": "$string:reason_nfc",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        // 局域网能力辅助定位（部分系统版本校验 Wi-Fi 场景需要）
+        "name": "ohos.permission.APPROXIMATELY_LOCATION",
+        "reason": "$string:reason_location",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        // 消息到达震动 -> Android VIBRATE
+        "name": "ohos.permission.VIBRATE",
+        "reason": "$string:reason_vibrate",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        // 接收到的文件直接落盘到「下载」目录（用户授权一次，之后免打扰）
+        // -> 替代 Android WRITE_EXTERNAL_STORAGE。
+        // 若不要这个权限，就只能每收一个文件弹一次保存对话框。
+        // 文件「浏览」仍走系统文件选择器（用户授权目录），不申请全盘访问。
+        //
+        // 注意：该权限是 user_grant 类型，reason + usedScene 是**必填**，
+        // 缺任一个会在 PreBuild 阶段报 00303218。
+        "name": "ohos.permission.READ_WRITE_DOWNLOAD_DIRECTORY",
+        "reason": "$string:reason_download",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      }
+    ]
+  }
+}

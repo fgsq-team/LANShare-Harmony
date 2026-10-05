@@ -1,0 +1,11 @@
+# 强制所有文本文件使用 LF 换行（防止 Windows 上 checkout 变 CRLF 导致 ArkTS/Python 补丁脚本失效）
+* text=auto eol=lf
+
+# 明确按语言归类，避免二进制被误判为文本
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.hap binary
+*.app binary
+*.ttf binary

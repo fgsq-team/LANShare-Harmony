@@ -1,0 +1,46 @@
+# ===== hvigor 构建缓存与产物 =====
+.hvigor/
+build/
+entry/build/
+entry/.preview/
+entry/.build_stale_*/
+.build_stale_*/
+oh_modules/
+*.hap
+*.hsp
+*.app
+
+# ===== ohpm / npm 依赖 =====
+oh-package-lock.json5
+node_modules/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.DS_Store
+*.iml
+local.properties
+
+# ===== 协议对拍临时产物 =====
+tests/protocol-bytecheck/_build/
+tests/protocol-bytecheck/_dbg_*.js
+
+# ===== 日志 =====
+*.log
+docs/*.log
+docs/hilog_*.txt
+
+# ===== 本地备份 / 二进制材料 =====
+docs/backups/
+docs/screenshots/
+docs/forensics/
+docs/official_src/
+docs/hap_archive/
+.backup_v50*/
+
+# ===== 签名材料（严禁入库）=====
+*.p12
+*.p7b
+*.cer
+*.jks
+*.keystore
+*.key

@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "com.fgsqw.lanshare",
+    "vendor": "fgsq-team",
+    "versionCode": 5000171,
+    "versionName": "5.1.71",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

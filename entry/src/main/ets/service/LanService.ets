@@ -1457,51 +1457,6 @@ export class LanService implements ChannelHandler {
     }
   }
 
-  /**
-   * ★ 5.1.69 B：这条 v5 日志是不是「逐项」日志（带进度下标，可按进度节流）。
-   * 判据：含 `清单[i/`、`开始收第 i/`、`收尾已回` 三种形态之一。
-   */
-  private static isPerItemV5Log(s: string): boolean {
-    return s.indexOf('清单[') >= 0
-      || s.indexOf('开始收第') >= 0
-      || s.indexOf('收尾已回') >= 0;
-  }
-
-  /**
-   * ★ 5.1.69 B：从逐项日志文本里取进度下标 i。
-   * 形态：`v5 清单[37/426] ...` / `v5 开始收第 37/426 项 ...`
-   * ⚠️ **不通用正则**（ArkTS 与性能）—— 逐段扫数字，遇 `/` 停。
-   *   找不到返回 -1（调用方按「不过滤」处理）。
-   */
-  private static progressIndexOf(s: string): number {
-    const open: number = s.indexOf('第');
-    let from: number = -1;
-    if (open >= 0) {
-      from = open + 1;
-    } else {
-      const lb: number = s.indexOf('[');
-      if (lb < 0) {
-        return -1;
-      }
-      from = lb + 1;
-    }
-    let n: number = 0;
-    let digits: number = 0;
-    for (let i: number = from; i < s.length; i++) {
-      const c: number = s.charCodeAt(i);
-      if (c >= 0x30 && c <= 0x39) {
-        n = n * 10 + (c - 0x30);
-        digits += 1;
-        if (digits > 6) {
-          return -1;
-        }
-      } else {
-        break;
-      }
-    }
-    return digits > 0 ? n : -1;
-  }
-
   private async persistAlbumIndex(): Promise<void> {
     if (this.ctx === null) {
       return;
@@ -3462,42 +3417,11 @@ export class LanService implements ChannelHandler {
     // 记下对端 IP：传输成功后 onTransferReport 要往消息页插文件记录
     this.transferPeerIp = peer.devIp;
     this.pushLog(`v5 收到来自 ${peer.devName} 的发送请求（${count} 项）`);
-    // ★★ 5.1.69 B：接收逐项日志**节流**（一处包装，V5Transfer 侧零改动）。
-    //
-    // 【为什么】vivi 2026-10-05 真机 426 张：接收阶段打出 **1708 条** v5 日志
-    //   （426 项 × 4 类：清单/开始收/已收满/收尾 + 4 条其他）。
-    //   `onLog` 原本直接接 `this.pushLog`，而 `pushLog` ⇒ **emit**
-    //   ⇒ `onSnapshot` ⇒ `refreshReceived`
-    //   （**全量扫盘** + rebuildRecvIndex + syncChatMediaPaths + buildChatGroups）
-    //   ⇒ **1708 次 O(n) 重建**，且文件列表正从 0 长到 426（每次成本都在涨）
-    //   ⇒ 这才是「批量接收时界面卡」的真凶。
-    //   ★ 与「收尾那 1 秒」是两件事：收尾已优化到位，但整个接收过程被拖累。
-    //
-    // 【怎么节流】带进度下标的三类（`清单[i/n]` / `开始收第 i/n 项` / `收尾已回`）
-    //   在 `n > V5_BULK_LOG_PLAIN(20)` 时只放行 **首项 / 每 V5_BULK_LOG_STEP(25) 项 / 末项**，
-    //   其余**转发到 hilog（Log.d）**，不进 UI、不 emit ⇒ 信息不丢，只是不刷屏。
-    //   `已收满 N B` 不带下标、无法按进度过滤 ⇒ 保留（它本就每项只打一次）。
-    //
-    // ⚠️ 只节流**日志落地**，不碰协议 / 流控 / 让帧任何时序
-    //   （与 5.1.29~5.1.32 证伪的那类「帧判据」无关）。
-    const bulkN: number = count;
-    const bulkPlain: number = 20;
-    const bulkStep: number = 25;
     await V5Transfer.receive(channel, peer, count, encData !== 0, this.storage,
       (r: TransferReport) => this.onTransferReport(r),
       // 5.0.47：接收链关键事件接到 UI 日志 —— hilog 抓不到时（无线调试 Unauthorized）
       // 也能靠这行定位「多项发送卡死」卡在哪一步
-      (s: string) => {
-        if (bulkN > bulkPlain && LanService.isPerItemV5Log(s)) {
-          // 从日志文本里取出进度下标 i（形如 `[i/n]` 或 `第 i/n 项`）
-          const i: number = LanService.progressIndexOf(s);
-          if (i > 0 && i !== 1 && i !== bulkN && (i % bulkStep) !== 0) {
-            Log.d(TAG, s);      // 只进 hilog
-            return;
-          }
-        }
-        this.pushLog(s);
-      }, pcStyleAck);
+      (s: string) => this.pushLog(s), pcStyleAck);
   }
 
   /**

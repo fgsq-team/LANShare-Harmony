@@ -219,7 +219,7 @@ const C_DONE_OK: string = '#1E8E3E';
 const ABOUT_REPO: string = 'https://github.com/fgsq-team/LANShare';
 const ABOUT_UPDATE: string = 'https://pan.quark.cn/s/04d4a2a1a13a';
 /** 版本号兜底：运行时 bundleManager 取不到（或取到空串）时用这个，与 app.json5 同步 */
-const ABOUT_FALLBACK_VER: string = '5.1.71';
+const ABOUT_FALLBACK_VER: string = '5.1.68';
 
 /**
  * ★ 5.1.62（vivi 10-04「版本号 +1 并上传网盘」）：
@@ -814,14 +814,6 @@ struct Index {
     // 5.0.39：相册索引要先于气泡渲染就绪 —— 沙箱副本上一轮可能就删了，缩略图全靠它
     this.service.loadAlbumIndex(ctx).then(() => {
       this.albumIndex = this.service.albumSnapshot();
-      // ★★ 5.1.70 C：**后台静默**探测「相册里的图还在不在」。
-      //   原来挂在「切到消息 tab」（index === 1）⇒ 426 张时**切页必卡**
-      //   （`probeAlbumOnEnterChat` 对 414 条 uri 逐个 statSync/openSync/readSync；
-      //    5.1.66 C1 的「每 20 张让一帧」只缓解帧率，切页那一帧的等待仍在）。
-      //   ⇒ 挂到页面出现时跑，与 tab 切换**完全解耦**。
-      //   ⚠️ 必须在 `loadAlbumIndex` 完成**之后**：索引没加载就探会全部判「已删」
-      //   （历史坑，见 probeAlbumOnEnterChat 的注释）。
-      this.scheduleBackgroundAlbumProbe();
     });
     this.applyWindowInset(ctx);
     // 进页面时先把 IP 探出来，方便用户还没开共享就看到地址
@@ -1625,12 +1617,6 @@ struct Index {
   private localStateTickNext: number = 0;
   // ★ 5.0.75：切消息页探测时**刚清过**的相册 key，避免每次切 tab 重复做同步 IO
   private albumClearedIds: Set<string> = new Set<string>();
-  /**
-   * ★★ 5.1.70：相册资产探测的**重入闸门**。
-   * 切页（已停用）与 （后台静默）两路都可能触发，
-   * 426 张时并发 = 白干一遍全量探活。
-   */
-  private albumProbeRunning: boolean = false;
 
   /** 打开闸门（可重入 ⇒ 用计数器，不用 boolean） */
   private beginStateSwap(): void {
@@ -4566,34 +4552,13 @@ struct Index {
       await Index.yieldOnce();
       let ok: number = 0;
       const missed: string[] = [];
-      // ★★ 5.1.70：**三段计时**（vivi 要据「确认框返回→完成 = 3.5s / 40 张 /
-      //   65.7MB ≈ 19MB/s」判断该砍哪一段：拷贝 / 解码 / 删沙箱）。
-      //   ⚠️ 只**累加**、循环结束后打**一条**汇总 ——
-      //   逐张打就是 40 次 logAuto ⇒ 40 次 emit ⇒ 40 次全量重建
-      //   （那正是 5.1.69 B 刚治好的病，别在这里复发）。
-      let tCopy: number = 0;
-      let tThumb: number = 0;
       // ★★ 5.1.65：整批收集，循环结束后**一次性**落盘 + 一次性删沙箱。
       //   （`idxBatch` / `toDelete` 已声明在 try 之前，见本方法开头。）
-      // ★★ 5.1.69：**循环内**周期性让帧。
-      //   原来循环外有一次 `yieldOnce()`，循环内 40 张连续做
-      //   （每张 = 一次分块异步拷贝 + 一次完整解码 + 一次 pack 写文件）
-      //   ⇒ 主线程连续被占 3~4 秒 ⇒ 界面全冻（vivi 2026-10-05 实测）。
-      //   ⇒ 每 ALBUM_YIELD_EVERY(5) 张让一帧，单次连续占用压到 ~0.5 秒。
-      let sinceYield: number = 0;
       for (let j: number = 0; j < gotUris.length; j++) {
         const i: number = idxs[j];
-        sinceYield += 1;
-        if (sinceYield >= Index.ALBUM_YIELD_EVERY) {
-          sinceYield = 0;
-          await Index.yieldOnce();
-        }
         // 5.0.47：单文件失败（copyTo/cacheThumb 抛异常）不再中断整批
         try {
-          // ★ 5.1.70：分段计时
-          const t0: number = Date.now();
           const msg: string = await ExportService.copyTo(batchPaths[i], gotUris[j], Index.baseName(batchPaths[i]));
-          tCopy += Date.now() - t0;
           if (!msg.startsWith('已保存')) {
             missed.push(Index.baseName(batchPaths[i]));
             continue;
@@ -4601,30 +4566,8 @@ struct Index {
           ok += 1;
           // ★ 5.0.52：拿刚写进去的资产校准探针（见 albumProbeCalibrate）
           this.albumProbeCalibrate(gotUris[j]);
-          // ★★ 5.1.71 A：**存相册阶段不再生成缩略图**（省 48% 的 CPU 开销）。
-          //
-          // 【为什么可以跳过】`mediaThumbSrcOf` 的注释（5.0.63）已定案：
-          //   > 「缓存没有时统一走下方兜底（**可能返回空串 = 占位**），
-          //   >  源**全程只有 cache 一个值**」
-          // 而缩略图**本来就是懒生成**（`maybePrefetchThumb`，渲染到才补）。
-          // ⇒ 这里跳过，气泡只是**短暂占位几十 ms**，随后懒生成补上。
-          //   ⚠️ 这**不是新 bug**，5.0.63 早就选了「宁可空拍几十 ms，
-          //     也不让显示源中途变一次」（变一次 ⇒ ForEach key 变 ⇒ 整屏闪）。
-          //
-          // 【仍然必须做的两件】
-          //   ① 记**相册 URI**（part 0）⇒ 用户点气泡能跳系统相册看大图；
-          //   ② 删沙箱副本（走 `toDelete`，循环外统一做）。
-          //
-          // 【数据依据】vivi 2026-10-05 真机 426 张计时：
-          //   拷贝 18100ms(50%) + **解码缩略图 17323ms(48%)** + 落盘删沙箱 640ms(2%)
-          //   ⇒ 解码是纯 CPU（41ms/张），**不是 IO 下限，可以砍**。
-          //
-          // 【顺带】沙箱副本若还在（用户取消存相册 / 弹框失败），
-          //   `maybePrefetchThumb` 会在滚动到时正常补缩略图。
-          const thumb: string = '';
-          // ★ 5.1.71 A: thumb 恒为空串 ⇒ rotOf('') 必然是 0。
-          //   这里仍显式算一次，保持 idxBatch 的数据形状与旧版一致
-          //   （albumPartOf(.,.,1) 读的是 thumb 字符串，'' 是合法值）。
+          // ① 出缩略图 ② 记相册 URI ③ 才删沙箱副本 —— 顺序不能反
+          const thumb: string = await this.cacheThumb(ctx, batchPaths[i], batchKeys[i]);
           const rot: number = this.service.rotOf(thumb) ?? 0;
           // ★★ 5.1.67 关键修正：这里**只进数组**。
           //   5.1.65 的 A1/A2 声明了 `idxBatch`/`toDelete`、循环后也用了，
@@ -4647,10 +4590,6 @@ struct Index {
       // ★★ 5.1.65：**先落盘、再删沙箱**（与原来「每张落盘后立刻删」相反，更安全）。
       //   原来每张「落盘索引 → 立刻删沙箱」；中途崩溃 ⇒ 索引写了、文件已删。
       //   现在整批落盘成功后才删 ⇒ 任一步崩溃都还能靠沙箱副本重建缩略图。
-      // ★ 5.1.70：三段计时汇总（**整批一条**日志）。
-      //   判据：拷贝 vs 解码 谁占大头 ⇒ 决定「砍 cacheThumb」还是「让帧已够」。
-      //   例：拷贝 2.5s / 解码 0.8s / 删 0.2s ⇒ 大头是纯 IO，让帧就是最优解。
-      const tDel0: number = Date.now();
       await this.service.setAlbumIndexBatch(idxBatch);
       for (let i: number = 0; i < toDelete.length; i++) {
         const derr: string | null =
@@ -4659,11 +4598,6 @@ struct Index {
           Log.w(TAG, `存相册后删沙箱副本失败: ${derr} ${toDelete[i]}`);
         }
       }
-      const tDel: number = Date.now() - tDel0;
-      // ★ 5.1.71 A：解码已跳过，`tThumb` 恒为 0，保留字段便于对照历史日志。
-      this.service.logAuto(`[耗时] 存相册 ${gotUris.length} 项：`
-        + `拷贝 ${tCopy}ms + 解码缩略图 ${tThumb}ms + 落盘删沙箱 ${tDel}ms`
-        + `（让帧 ${Index.ALBUM_YIELD_EVERY} 张/次，缩略图改懒生成）`);
       this.toast(ok > 0 ? `已存入相册 ${ok} 个${extra}` : '存入相册失败');
       this.service.logAuto(`自动存相册完成：成功 ${ok}/${batchPaths.length}`
         + (missed.length > 0 ? `，未成功：${missed.join('、')}` : ''));
@@ -4751,21 +4685,6 @@ struct Index {
    * 对比一帧 16.7ms 仍有富余；再大就让帧变稀、探测总时长变长。
    */
   private static PROBE_YIELD_EVERY: number = 20;
-
-  /**
-   * ★★ 5.1.69：存相册主循环**每处理多少张让一帧**。
-   *
-   * 背景（vivi 2026-10-05 真机 426 张）：`确认框返回 → 完成` = **3~4 秒 / 40 张**。
-   * 根因：循环内 `await copyTo` + `await cacheThumb`（完整解码 + rotate + pack）
-   * **连续 40 次，中间一次都不让帧** ⇒ 主线程被占满 3~4 秒 ⇒ 界面全冻。
-   *
-   * 取 5 的理由：
-   * - 每张都让（`yieldOnce` 是 setTimeout 30ms）⇒ 40 张至少多等 1.2 秒，**更慢**；
-   * - 每 5 张让 ⇒ 单次连续占用从 ~3.5s 压到 ~0.5s，
-   *   总耗时只多 8×30ms = 0.24s，但界面全程可响应。
-   * ★ 与 `PROBE_YIELD_EVERY`（探测循环，20 张/次）是**同一个病的两条路径**。
-   */
-  private static ALBUM_YIELD_EVERY: number = 5;
 
   private static awaitDialog(helper: photoAccessHelper.PhotoAccessHelper,
                              srcUris: string[],
@@ -4947,11 +4866,7 @@ struct Index {
         const w: number = srcW;
         const h: number = srcH;
         const longest: number = w > h ? w : h;
-        // ★★ 5.1.71 B：320 → **224**。气泡是 48vp，224px 足够覆盖 2~3 倍屏密度。
-        //   解码耗时与像素数近似线性 ⇒ (224/320)² ≈ 0.49 ⇒ 理论上省一半。
-        //   （真正省时间的是「存相册阶段跳过解码」；这条是叠加收益，
-        //     且**对懒生成路径同样有效** —— 滚动到时生成的缩略图也变小。）
-        const s: number = longest > 224 ? 224 / longest : 1;
+        const s: number = longest > 320 ? 320 / longest : 1;
         // desiredSize 直接按目标尺寸解码 —— 4K 原图整张进内存太贵。
         // ⚠️ editable 必须给 true：不可编辑的 PixelMap 上写像素类操作（含 rotate）会失败。
         pm = await src.createPixelMap({
@@ -5292,12 +5207,6 @@ struct Index {
    * ⚠️ 全程 try/catch：探测失败**绝不能**影响切 tab。
    */
   private async probeAlbumOnEnterChat(): Promise<void> {
-    // ★★ 5.1.70：**重入闸门**。原来切 tab 会触发、点击气泡也会触发，
-    //   两路并发时会对同一批 uri 重复探一遍（426 张 = 白干）。
-    if (this.albumProbeRunning) {
-      return;
-    }
-    this.albumProbeRunning = true;
     try {
       await Index.yieldOnce();
       let checked: number = 0;
@@ -5350,28 +5259,7 @@ struct Index {
       const err: BusinessError = e as BusinessError;
       // ⚠️ 探测失败**绝不能**影响切 tab，只记日志
       this.service.logAuto(`切消息页相册探测异常（已忽略）：${err.code} ${err.message}`);
-    } finally {
-      this.albumProbeRunning = false;
     }
-  }
-
-  /**
-   * ★★ 5.1.70（vivi 要求）：相册资产探测改为**后台静默**。
-   *
-   * 【原来】只在「切到消息 tab」时跑 `probeAlbumOnEnterChat()`
-   *   ⇒ 426 张时切页必卡（每 20 张让一帧也救不了，扫盘 + 打开 + 读字节本身就要时间）。
-   *
-   * 【现在】`onPageShow`（应用回前台）就启动一次，
-   *   **与 tab 切换完全解耦** ⇒ 用户什么时候切页都不再触发探测。
-   *
-   * 【为什么不直接 `void` 掉不 await】探测是 async；
-   *   `onPageShow` 里不 await ⇒ 不阻塞启动流程，但**闸门 + 静默日志**保证不重入。
-   *
-   * ⚠️ 「已删除」的处置**完全不变**（清 uri + 更新角标 + 一条汇总日志），
-   *   只是**不再占用切页那一帧**。
-   */
-  private scheduleBackgroundAlbumProbe(): void {
-    this.probeAlbumOnEnterChat();
   }
 
   private albumAssetAlive(uri: string): boolean {
@@ -5651,11 +5539,8 @@ struct Index {
           if (vw > 0 && vh > 0) {
             this.mediaRatio.set(path, Index.clampRatio(vw / vh));
             const longest: number = vw > vh ? vw : vh;
-            // ★ 5.1.71 B：视频封面同样 320 → 224（与 cacheThumb 的图片缩略图一致）。
-            //   ⚠️ 这处是**第一次语义自检抓出来的**（'320 阈值仍在'）——
-            //   漏改会让视频封面仍是 320px，两类媒体的缩略图尺寸不一致。
-            if (longest > 224) {
-              const s: number = 224 / longest;
+            if (longest > 320) {
+              const s: number = 320 / longest;
               await pm.scale(s, s);
             }
           }
@@ -7897,12 +7782,11 @@ struct Index {
             } catch (e) {
               // 列表还没挂载，忽略
             }
-            // ★★ 5.1.70 C：这里**不再**做相册资产全量探测。
-            //   原来 5.0.75 是「切到消息 tab 才探」⇒ 426 张时切页必卡。
-            //   现已改为**后台静默**（`aboutToAppear` → `loadAlbumIndex` 完成后
-            //   `scheduleBackgroundAlbumProbe()`），与 tab 切换完全解耦。
-            //   ⚠️ 效果不变：用户删了相册里的图，气泡角标照样更新
-            //   （处置逻辑在 `probeAlbumOnEnterChat` 里没动过）。
+            // ★ 5.0.75（vivi 20:21 新功能）：切到消息 tab 时**主动**全量探一次
+            //   「相册里的图还在不在」—— 用户可能在系统相册里删了图，
+            //   而此前**只有点击气泡时**才被动探测（`onFileBubbleClick`），
+            //   用户看不到任何提示，只有点它才弹 toast。
+            this.probeAlbumOnEnterChat();
           }
           // 切到「文件」页时刷一次 —— 可能是在别的页期间收到的文件
           if (index === 2) {

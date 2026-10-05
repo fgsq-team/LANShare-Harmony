@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LANShare 安卓 → 鸿蒙移植：核心实现说明</title>
+<style>
+:root{
+  --bg:#fbfbfa; --card:#fff; --ink:#1c1c1a; --ink2:#5f5e5a; --ink3:#888780;
+  --line:#e6e5e0; --blue:#185fa5; --blue-bg:#e6f1fb;
+  --teal:#0f6e56; --teal-bg:#e1f5ee;
+  --amber:#854f0b; --amber-bg:#faeeda;
+  --purple:#534ab7; --purple-bg:#eeedfe;
+  --green:#3b6d11; --green-bg:#eaf3de;
+  --red:#a32d2d; --red-bg:#fcebeb;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.75; font-size:15px;
+  padding:0 0 80px;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:0 24px}
+header{padding:56px 0 36px;border-bottom:1px solid var(--line);margin-bottom:40px}
+h1{font-size:30px;font-weight:600;letter-spacing:-.3px;margin-bottom:14px}
+.meta{color:var(--ink3);font-size:14px}
+.meta span{margin-right:20px}
+h2{font-size:22px;font-weight:600;margin:52px 0 8px;padding-top:8px}
+h2 .num{display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;
+  background:var(--purple-bg);color:var(--purple);border-radius:8px;font-size:15px;
+  margin-right:12px;vertical-align:3px}
+.lead{color:var(--ink2);margin-bottom:24px;font-size:15px}
+h3{font-size:17px;font-weight:600;margin:32px 0 12px}
+p{margin-bottom:14px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:#f0efec;padding:1px 6px;border-radius:4px;font-size:.88em;color:#3a3a38}
+pre{background:#1c1c1a;color:#e8e6e0;padding:18px 20px;border-radius:10px;
+  overflow-x:auto;font-size:13px;line-height:1.7;margin:16px 0}
+pre code{background:none;color:inherit;padding:0;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  table-layout:auto}
+table td:first-child{white-space:nowrap;font-weight:500}
+th{background:#f5f4f1;text-align:left;padding:11px 14px;font-weight:600;
+  font-size:13px;color:var(--ink2);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid #f0efec;vertical-align:top}
+tr:last-child td{border-bottom:none}
+.ok{color:var(--green);font-weight:600;white-space:nowrap}
+.no{color:var(--red);font-weight:600;white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:20px 22px;margin:16px 0}
+.card.blue{background:var(--blue-bg);border-color:#c5ddf5}
+.card.teal{background:var(--teal-bg);border-color:#bce5d5}
+.card.amber{background:var(--amber-bg);border-color:#f5dcb0}
+.card.green{background:var(--green-bg);border-color:#d3e8b8}
+.card.purple{background:var(--purple-bg);border-color:#d5d1f7}
+.card h4{font-size:15px;font-weight:600;margin-bottom:8px}
+.card p:last-child{margin-bottom:0}
+.card p{font-size:14px}
+ul{margin:0 0 14px 22px}
+li{margin-bottom:7px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+.item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.item h5{font-size:14px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.item p{font-size:13.5px;color:var(--ink2);margin:0}
+.tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:12px;
+  font-weight:600;background:var(--green-bg);color:var(--green);margin-left:6px}
+.tag.n{background:var(--red-bg);color:var(--red)}
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);
+  color:var(--ink3);font-size:13px}
+@media(max-width:720px){
+  .grid2{grid-template-columns:1fr}
+  h1{font-size:24px} h2{font-size:19px}
+  table{font-size:13px} th,td{padding:9px 10px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>LANShare 安卓 → 鸿蒙移植<br>核心实现说明</h1>
+  <div class="meta">
+    <span>版本 v5.1.71</span>
+    <span>2026-10-05</span>
+    <span>ArkTS / API 26 / Stage 模型</span>
+  </div>
+</header>
+
+<h2><span class="num">1</span>核心协议怎么移过来的</h2>
+<p class="lead">安卓原协议分<strong>两套 TCP 编码</strong>，靠首 4 字节分流。移植时逐项对齐，全部做了字节级对拍验证。</p>
+
+<table>
+<tr><th>协议要素</th><th>安卓原实现</th><th>鸿蒙实现</th><th>对拍</th></tr>
+<tr><td>12 字节包头（cmd/count/length 大端）</td><td><code>DataEnc</code> / <code>DataDec</code></td><td><code>core/DataPacket.ets</code></td><td class="ok">✅</td></tr>
+<tr><td><code>0x45</code> 混淆层 <code>(b-1)^0x45</code></td><td>同上</td><td>同上</td><td class="ok">✅</td></tr>
+<tr><td>UDP 魔数前缀 <code>0x66677371</code></td><td><code>UDPTools.sendData</code></td><td><code>DataPacket.encodeUdp()</code></td><td class="ok">✅</td></tr>
+<tr><td>字符串 <code>4 字节长度 + UTF-8</code>，null = -1</td><td><code>putString</code></td><td>同上</td><td class="ok">✅</td></tr>
+<tr><td><strong>大端 / 小端</strong></td><td>Java 大端</td><td><strong>JS 原生小端 ⇒ 全部手写大端位移</strong></td><td class="ok">✅</td></tr>
+<tr><td>单端口三协议分流</td><td><code>LANService</code> 1838-1857</td><td><code>LanTcpServer.dispatch()</code></td><td class="ok">✅</td></tr>
+<tr><td>设备平台代号 <code>HARMONY_OS = 6</code></td><td><code>Device.java</code></td><td><code>DeviceMode.HARMONY_OS</code></td><td class="ok">✅ <em>原协议已预留</em></td></tr>
+<tr><td>设备 JSON 字段名（含原拼写 <code>devBrotIP</code> / <code>uniqueUUid</code>）</td><td><code>Device.toJsonObject</code></td><td><code>core/DeviceCodec.ets</code></td><td class="ok">✅</td></tr>
+</table>
+
+<h3>v4 文件收发序列</h3>
+<p>逐行取自 <code>FileSend.java</code> / <code>FileServer.java</code>：</p>
+<pre><code>发送：MAGIC_NUM(4B) → int NEW_VERSION_4(-2) → str deviceJson
+      → int FS_SHARE_FILE(1101) → bool encData → str transferJson
+      ↔ int 等待应答，必须 == FS_AGREE
+      重复: int length + bytes（encData 时 FileCrypto 变换，
+            index 按文件内累计偏移）
+
+接收：没有结束标记，按声明的 length 收够即停；length &lt;= 0 即中止
+      （取自 FileServer.recvStreamToFile()）</code></pre>
+
+<div class="card green">
+  <h4>唯一零改动复用的资源</h4>
+  <p><code>assets/web/**</code> 5 个文件原样搬进 <code>resources/rawfile/web/**</code> —— 网页前端界面完全复用。</p>
+</div>
+
+<h2><span class="num">2</span>怎么兼容 V5 协议</h2>
+<p class="lead">核心是<strong>双代次并存 + 按对端版本号分流</strong>。</p>
+
+<h3>2.1 双代次并存</h3>
+<table>
+<tr><th></th><th>旧协议（<code>dataVersion &lt; 4</code>）</th><th>v4 协议</th></tr>
+<tr><td>开头</td><td>魔数 → DataEnc 包（12B 头）</td><td>魔数 → <strong>裸 int <code>NEW_VERSION_4 = -2</code></strong></td></tr>
+<tr><td>混淆</td><td>全段 <code>0x45</code></td><td><strong>无混淆</strong></td></tr>
+<tr><td>命令</td><td>在包头里</td><td>裸 int，写在流里</td></tr>
+<tr><td>结构</td><td>一个包一个命令</td><td><strong>一条流顺序写多字段</strong>，长度由业务字段自带</td></tr>
+</table>
+
+<p><strong>分流点</strong>：<code>LanService.handlePrivateProtocol()</code> 先读 4 字节判代次，
+命中 <code>NEW_VERSION_4</code> 转 <code>handleV4()</code>，否则 <code>unshift()</code> 回退旧协议解析。</p>
+
+<div class="card amber">
+  <h4>第一版踩的坑</h4>
+  <p>只做了旧协议：收到 Android 端的 <code>FF FF FF FE</code> 会按 12 字节包头解析出乱码命令码，
+  然后当「未知协议流量」断开 —— 现象是<strong>能发现设备，但一发文件就失败</strong>。</p>
+</div>
+
+<h3>2.2 按对端版本号分流</h3>
+<p>新增字段按对端广播的 <code>dataVersion</code> 分流，协议侧与网页侧各自独立：</p>
+<ul>
+  <li>收尾 ack 字节数：1.35 与 1.0 不同 ⇒ 按版本分别处理</li>
+  <li>设备列表显示<strong>版本徽章</strong>（V3 / V4 / V5），并带进消息页胶囊与发文件弹窗</li>
+  <li>已发文件改用<strong>握手 UUID 反查发现表</strong>判活，不依赖传输层状态</li>
+</ul>
+
+<h3>2.3 V5 传输层：三条平行路径</h3>
+<table>
+<tr><th>路径</th><th>实现</th><th>场景</th></tr>
+<tr><td>单文件</td><td><code>V5Transfer.recvBody</code></td><td>协议侧大文件</td></tr>
+<tr><td>分片</td><td><code>V5Transfer</code> 的 <code>SegPart</code></td><td>协议侧小文件（1.35 对小文件也切 16 片）</td></tr>
+<tr><td>网页</td><td><code>MultipartStream.closePart</code></td><td>浏览器上传</td></tr>
+</table>
+
+<div class="card purple">
+  <h4>三条路径是平行实现</h4>
+  <p>新增任何逻辑（改名、纠错、记账）必须三条都接入 —— 历史上曾漏了分片路径，连续三版没测到，
+  而小文件恰恰走分片。</p>
+</div>
+
+
+<h2><span class="num">3</span>网页接收怎么实现</h2>
+<p class="lead">安卓用 <code>HttpServer-1.9.57.jar</code>，鸿蒙无等价库 ⇒ 自研三个模块，
+与私有协议<strong>共用同一个 5856 端口</strong>，按首字节分流。</p>
+
+<div class="card blue">
+  <h4>模块构成</h4>
+  <p><code>net/HttpProtocol.ets</code>（HTTP 解析） + <code>net/WsProtocol.ets</code>（WebSocket 帧）
+  + <code>net/HttpRouter.ets</code>（路由）</p>
+</div>
+
+<h3>3.1 路由表（与原 <code>LHttpServer.java</code> 一一对应）</h3>
+<table>
+<tr><th>路径</th><th>原实现</th><th>鸿蒙侧</th></tr>
+<tr><td><code>GET /</code></td><td>返回 <code>assets/web/lanshare.html</code></td><td><span class="ok">✅ rawfile 复用</span></td></tr>
+<tr><td><code>GET /css/* /js/* /images/*</code></td><td>静态资源</td><td><span class="ok">✅ rawfile 复用</span></td></tr>
+<tr><td><code>GET /favicon.ico</code></td><td>静态资源</td><td>rawfile 内无此文件，返回 204</td></tr>
+<tr><td><code>GET /files?dir=</code></td><td>列目录，返回 JSON</td><td>沙箱 + 用户授权目录</td></tr>
+<tr><td><code>GET /file/*</code></td><td>单文件下载，支持 Range</td><td>同左</td></tr>
+<tr><td><code>GET /media</code></td><td>媒体（图片/视频）列表</td><td><span class="ok">✅</span></td></tr>
+<tr><td><code>GET /wss</code></td><td>WebSocket 升级</td><td><span class="ok">✅ <code>WsProtocol</code></span></td></tr>
+<tr><td><code>POST /checkPass</code></td><td>校验网页端访问密码</td><td><span class="ok">✅ preferences</span></td></tr>
+<tr><td><code>POST /initConfig</code></td><td>网页端拉取初始配置</td><td><span class="ok">✅</span></td></tr>
+<tr><td><code>POST /updateWebName</code></td><td>网页端修改设备名</td><td><span class="ok">✅</span></td></tr>
+<tr><td><code>POST /uploadFile</code></td><td>网页端上传单个文件</td><td><span class="ok">✅ MultipartStream</span></td></tr>
+<tr><td><code>POST /chatUploadFile</code></td><td>网页端聊天上传</td><td><span class="ok">✅</span></td></tr>
+<tr><td><code>/compressFiles</code> <code>/downloadZipFile</code></td><td>打包下载</td><td><span class="ok">✅ zlib</span></td></tr>
+<tr><td><code>/apps</code> <code>/appicon</code> <code>/apkfile/*</code> <code>/drawable</code></td><td>已装应用列表 + APK 下载</td><td class="no">⛔ 鸿蒙不开放</td></tr>
+</table>
+
+<h3>3.2 鉴权流程</h3>
+<ol style="margin-left:22px;margin-bottom:14px">
+  <li>网页端连上后先 <code>POST /checkPass</code>，每 2 秒轮询一次直到手机端确认</li>
+  <li>密码存 <code>preferences</code>（<code>lanshare_web</code>），与原 App 共用同一文件</li>
+  <li>开启「网页免确认」后，新客户端无需手机端点确认（对应原 <code>Config.WEB_OPEN</code>）</li>
+  <li>客户端标识用 <code>mUtil.generateRandomString(6)</code> 同款随机名后缀</li>
+</ol>
+
+<h3>3.3 双向上传</h3>
+<div class="grid2">
+  <div class="item"><h5>网页 → 手机</h5><p><code>/uploadFile</code>、<code>/chatUploadFile</code> 走 multipart 解析</p></div>
+  <div class="item"><h5>手机 → 网页</h5><p>直推原文件，<strong>零落盘</strong>（连沙箱副本也不要）</p></div>
+</div>
+<p>批量：多文件打包完即删沙箱副本。</p>
+
+<div class="card amber">
+  <h4>⛔ 能力缺失</h4>
+  <p>「已安装应用列表 / 分享 APK」整块无法保留 —— 三方应用不能枚举其它应用
+  （<code>GET_BUNDLE_INFO_PRIVILEGED</code> 仅对系统应用开放），也读不到其它应用的安装包（沙箱隔离）。</p>
+</div>
+
+<h2><span class="num">4</span>UI 上多了哪些新功能</h2>
+<p class="lead">安卓原项目 62 个 <code>layout</code> + Fragment/Adapter 体系，在鸿蒙侧统一改为 ArkUI 声明式组件（<code>pages/Index.ets</code>，8086 行）。</p>
+
+<div class="card amber">
+  <h4>⚠️ 对齐说明</h4>
+  <p>安卓<strong>有</strong>消息页，在底部 tab 里叫「<strong>记录</strong>」（<code>strings.xml</code> 里的 <code>record</code>），
+  实现是 <code>FragmentChat</code>（919 行）+ <code>ChatAdapter</code> + <code>MessageMediaContent</code>。
+  下表列的是鸿蒙版相对它<strong>新增或显著增强</strong>的部分，不是「安卓没有」。</p>
+</div>
+
+<h3>4.1 整体交互形态</h3>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td><strong>打开即共享</strong></td><td><code>aboutToAppear</code> 自动 <code>startSharing</code>，无「开始共享」按钮；仅失败时露出「重试」</td></tr>
+<tr><td><strong>四个页签</strong></td><td>共享 / 消息 / 文件 /（日志已并入共享页底部「复制日志」）</td></tr>
+<tr><td>不做后台保活</td><td>退到后台即停服、回前台自动恢复。页面文案明确提示「保持本页在前台」</td></tr>
+<tr><td>防息屏</td><td><code>setWindowKeepScreenOn(true)</code>，<strong>不需要任何权限</strong>（替代安卓的 <code>WakeLock</code>）</td></tr>
+<tr><td>本机名称可改</td><td>就地编辑写入 <code>preferences</code>，下一轮 UDP 广播即带新名；编辑态可「恢复默认」</td></tr>
+<tr><td>二维码</td><td>用 ArkUI <strong>内建 <code>QRCode</code> 组件</strong>渲染（无需三方库）</td></tr>
+<tr><td>返回键语义</td><td>多选态 → 取消多选；弹窗 → 关弹窗；都不是才交还系统</td></tr>
+</table>
+
+<h3>4.2 消息页（安卓「记录 tab」的增强版）</h3>
+<table>
+<tr><th>能力</th><th>安卓「记录 tab」</th><th>鸿蒙增强</th></tr>
+<tr><td>双向文字消息</td><td>有</td><td>双方互发，走 <code>LanService.sendTextMessage</code></td></tr>
+<tr><td><strong>消息内缩略图</strong></td><td><strong>布局有控件但没绑数据</strong> —— <code>chat_left/right_media_item.xml</code> 定义了 <code>chat_media_image</code>，但 <code>MediaMsgHolder.media</code> 这个 ImageView 全程无 <code>setImage</code> 调用，<code>ChatAdapter</code> 只设了大小 / 进度 / 时长 / 状态</td><td>缩略图真正加载；多张自动聚合成宫格</td></tr>
+<tr><td><strong>同步本机删除状态</strong></td><td>无 —— 气泡状态只有传输成功 / 失败 / 进度</td><td>相册资产删除探测（<strong>每张图一条索引</strong>，删一张不再全批失效），界面同步显示「已删除」</td></tr>
+<tr><td><strong>在记录页直接发文件</strong></td><td>无 —— 发送入口在首页设备行</td><td>发送入口收敛为输入框右侧「+」，<code>bindMenu</code> 弹「相册 / 文件」，<strong>在记录页内闭环</strong></td></tr>
+<tr><td>聊天气泡聚合</td><td>无（一张一条消息）</td><td>多张聚合成<strong>一个气泡</strong>（宫格），但<strong>记账仍每张一条</strong>（显示聚合 ≠ 记账聚合）</td></tr>
+<tr><td>文件消息卡片</td><td>无</td><td><code>ChatMessage</code> 新增 <code>kind</code>（<code>text</code>/<code>file</code>）。传输<strong>成功</strong>时插一条记录，内容为文件名（多发为「N 个文件」），点击跳文件页。⚠️ 失败不插</td></tr>
+<tr><td>气泡信息</td><td>仅文件名</td><td>文件大小 + 平均速度</td></tr>
+<tr><td>发送目标选择</td><td>需回首页</td><td>页签顶部设备胶囊直接切；设备行显示<strong>版本徽章</strong>（V3 / V4 / V5）</td></tr>
+<tr><td>消息持久化</td><td>有（<code>MesssageDButil</code>）</td><td>落盘 <code>chat_history.json</code>（MiniJson 手写序列化），启动恢复；「清空」连持久化一起清</td></tr>
+<tr><td>视频角标</td><td>时长</td><td>纯文字 <code>VIDEO</code> 角标（不用 ▶ 图标，避免不可见）</td></tr>
+</table>
+
+<h3>4.3 文件页（独立页签）</h3>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td>独立页签</td><td>「接收到的文件」独立成页，切到该页自动刷新</td></tr>
+<tr><td><strong>48×48 缩略图</strong></td><td><code>fileUri.getUriFromPath()</code> 取沙箱 URI，配 <code>sourceSize(96)</code> 压解码尺寸（不压的话 40 张原图会整张解进内存）</td></tr>
+<tr><td><strong>点开看大图</strong></td><td>全屏预览：双指缩放 / 双击复位 / 放大后可拖动 / 返回退出</td></tr>
+<tr><td><strong>批量另存为</strong></td><td>长按进多选 → 顶部「已选 N / 全选 / 取消」→ 底部「另存为(N) / 删除(N)」。<code>saveMany</code> 一次弹窗处理多文件</td></tr>
+<tr><td>删单个 + 删一批</td><td>行内「删除」按钮（删一个）+ 长按多选（删一批）并存</td></tr>
+<tr><td>自绘删除确认框</td><td>系统 <code>showDialog</code> 的 title 字号固定、不折行 ⇒ 改为自绘：标题 16fp，文件名单独一块 13fp + <code>maxLines(5)</code></td></tr>
+<tr><td>清空 + 路径守卫</td><td><code>ExportService.deleteAll</code> 带路径守卫</td></tr>
+<tr><td>文件名自适应</td><td><code>maxLines(2)</code> + <code>wordBreak(BREAK_ALL)</code>。⚠️ 不能叠 <code>lineHeight</code> —— 它同时约束行高与组件高度</td></tr>
+</table>
+
+<h3>4.4 传输进度浮层</h3>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td>实时速度</td><td>瞬时速度（EMA）+ 平均速度<strong>两道门限分开</strong>（不是同一语义）</td></tr>
+<tr><td>文件名两行</td><td>长文件名超长时折两行，顶部带 Linear 进度条</td></tr>
+<tr><td>完成态</td><td>完成停转 + 换色 + 对勾旁显示「完成」+ 5 秒自动收</td></tr>
+<tr><td>独立提示通道</td><td>完成提示走 toast 独立通道，不与进度浮层抢状态</td></tr>
+<tr><td>传输中地球</td><td>补回传输中的动效</td></tr>
+</table>
+
+<h3>4.5 相册与存相册</h3>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td><strong>相册选择器</strong></td><td>走 <code>PhotoViewPicker</code>，<strong>URI 永久授权：无需权限、无需先复制到沙箱</strong></td></tr>
+<tr><td>双选择器</td><td>设备行两个按钮「相册」/「文件」并列</td></tr>
+<tr><td>批量存相册</td><td>消息多选态加「存相册 (N)」</td></tr>
+<tr><td>自动存相册</td><td>可开关；相册资产删除探测（每张图一条索引，删一张不再全批失效）</td></tr>
+<tr><td>沙箱自动清理</td><td>另存为 / 发到网页端后自动删沙箱副本</td></tr>
+<tr><td><strong>魔数纠错</strong></td><td>按文件头判断真实类型，纠正错后缀。口径 = <strong>只纠正错后缀，不给无后缀文件硬加后缀</strong>；同类型等价（<code>a.jpeg</code> 与 <code>a.jpg</code>）不动</td></tr>
+</table>
+
+<h3>4.6 设备发现</h3>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td>设备列表</td><td>显示<strong>版本徽章</strong>（V3 / V4 / V5）</td></tr>
+<tr><td>下线更快</td><td>换掉判死模型：向对端 5856 建 TCP 复核连接（<strong>不发任何字节</strong>就关），连不上连续 2 次即判死 ⇒ <strong>2~3s 消失</strong>（原 8~15s）</td></tr>
+<tr><td>主动巡检</td><td>1s 巡检 <code>sweepDevices()</code> —— 离线是「超时」判定，那一刻<strong>没有任何事件</strong>，不主动巡检只能等下一次别人发包</td></tr>
+<tr><td>发现加速</td><td>收到对方 <code>UDP_GET_DEVICES</code> 探测<strong>立即单播应答</strong>（原双方各等 5s 周期）；启动时 burst 补探（0.7s / 1.8s 各一轮）</td></tr>
+<tr><td>多设备选择</td><td>多台在线时「+」弹窗选设备</td></tr>
+</table>
+
+<h2><span class="num">5</span>当前状态</h2>
+<div class="card teal">
+  <h4>v5.1.71（versionCode 5000171）· 已构建签名</h4>
+  <p>上一个真机验证版本 <strong>5.1.70</strong>：426 张全部入库、零失败零放弃、沙箱残留 0、接收总耗时 36s。<br>
+  5.1.71 目标：存相册阶段跳过缩略图解码（占 48% 纯 CPU）+ 缩略图 320→224 ⇒ 预计降到 ~18s。</p>
+</div>
+
+<footer>
+  LANShare · HarmonyOS 移植技术说明 · v5.1.71 · 2026-10-05
+</footer>
+
+</div>
+</body>
+</html>

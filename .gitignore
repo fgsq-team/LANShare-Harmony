@@ -27,20 +27,20 @@ tests/protocol-bytecheck/_dbg_*.js
 # ===== 日志 =====
 *.log
 docs/*.log
-docs/hilog_*.txt
 
-# ===== 本地备份 / 二进制材料 =====
+# ===== 旧版手动备份（git 历史已替代此需求，保留磁盘副本作双保险）=====
 docs/backups/
+.backup_v50*/
+
+# ===== 临时校验 / 调试目录 =====
+.h30/
+.hapcheck*/
+.hapcheck/
+
+# ===== 截图与第三方参考（二进制 / 外部材料，不入版本库）=====
 docs/screenshots/
 docs/forensics/
 docs/official_src/
-docs/hap_archive/
-.backup_v50*/
 
-# ===== 签名材料（严禁入库）=====
-*.p12
-*.p7b
-*.cer
-*.jks
-*.keystore
-*.key
+# 旧版 HAP 归档区（根目录只留最近 2 版）
+docs/hap_archive/

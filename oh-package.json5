@@ -1,0 +1,8 @@
+{
+  "modelVersion": "7.0.0",
+  "description": "LANShare HarmonyOS 7 (API 26) 迁移工程",
+  "dependencies": {},
+  // 不声明 @ohos/hypium：本工程当前没有 ohosTest 用例目录，
+  // 留空可让 ohpm install 完全离线完成（无需访问 ohpm registry）。
+  "devDependencies": {}
+}

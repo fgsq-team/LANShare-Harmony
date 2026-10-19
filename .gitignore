@@ -1,0 +1,70 @@
+# ===== hvigor 构建缓存与产物 =====
+.hvigor/
+build/
+entry/build/
+entry/.preview/
+entry/.build_stale_*/
+.build_stale_*/
+oh_modules/
+*.hap
+*.hsp
+*.app
+
+# ===== ohpm / npm 依赖 =====
+oh-package-lock.json5
+node_modules/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.DS_Store
+*.iml
+local.properties
+
+# ===== 协议对拍临时产物 =====
+tests/protocol-bytecheck/_build/
+tests/protocol-bytecheck/_dbg_*.js
+
+# ===== 日志 =====
+*.log
+docs/*.log
+
+# ===== 旧版手动备份（git 历史已替代此需求，保留磁盘副本作双保险）=====
+docs/backups/
+.backup_v50*/
+
+# ===== 临时校验 / 调试目录 =====
+.h30/
+.hapcheck*/
+.hapcheck/
+
+# ===== 截图与第三方参考（二进制 / 外部材料，不入版本库）=====
+docs/screenshots/
+docs/forensics/
+docs/official_src/
+
+# 旧版 HAP 归档区（根目录只留最近 2 版）
+docs/hap_archive/
+
+# ===== 内部开发产物（含本机路径 / 设备标识 / 分发材料，不进公开仓库）=====
+# 仅从版本库移除，磁盘副本保留；需要时手动 git add -f
+push.cmd
+docs/patch_scripts/
+docs/doc_archive/
+docs/market/
+docs/site/
+docs/market_release.md
+docs/_patch_send_route.py
+docs/probe_wireless_port.js
+docs/评估_后台传输与实况窗.md
+docs/评估_V4协议速度优化.md
+鸿蒙7迁移技术决策报告.md
+/patch*.py
+
+# ===== 真机调试素材（含真实设备地址与采集的个人数据，不进公开仓库）=====
+tests/live-probe/
+
+# ===== 测试生成物与输出（由 check 脚本现跑现生成，不入库）=====
+tests/*/_build/
+tests/*/_v4build/
+tests/*/_out/
+tests/*/_dbg_*.js

@@ -1,0 +1,55 @@
+{
+  "app": {
+    // 未配置 signingConfigs：hvigor 对 storePassword/keyPassword 强制解密，
+    // 只吃集成开发环境生成的密文，手填明文会直接构建失败。
+    // 签名统一在构建之外对产物单独完成，因此这里留空。
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+
+        // ------------------------------------------------------------------
+        // 版本字段格式（踩过的两个坑，依据 hvigor-ohos-plugin 的报错逐条校正）：
+        //   ① 00308018：把 "7.0.0(26)" 写进 compatibleSdkVersion 会报
+        //      「api version parameter is illegal」——该字段只吃纯版本号。
+        //   ② 00306042：API 26 起命名规则变了，官方原文：
+        //        API 10~25 → 必须是 '5.0.0(12)' 这种「平台版本(API 号)」
+        //        API 26+   → 必须是 '26.0.0' 这种纯平台版本
+        //      所以三个字段统一写 "26.0.0"。
+        // ------------------------------------------------------------------
+        "compileSdkVersion": "26.0.0",
+        "compatibleSdkVersion": "26.0.0",
+        "targetSdkVersion": "26.0.0",
+
+        // 一旦声明了 compileSdkVersion，schema 就强制要求 arkTSVersion
+        // （enum 只有 "1.0" / "1.1"，取新的 1.1）
+        "arkTSVersion": "1.1",
+
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      { "name": "debug" },
+      { "name": "release" }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": ["default"]
+        }
+      ]
+    }
+  ]
+}

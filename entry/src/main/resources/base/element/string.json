@@ -1,0 +1,9 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "LANShare 局域网文件传输" },
+    { "name": "EntryAbility_desc", "value": "LANShare 主入口" },
+    { "name": "EntryAbility_label", "value": "LANShare局域网互传" },
+    { "name": "reason_internet", "value": "用于在局域网内发现设备并收发文件" },
+    { "name": "reason_network_info", "value": "用于获取本机在局域网中的 IP 地址" }
+  ]
+}

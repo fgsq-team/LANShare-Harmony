@@ -1,0 +1,156 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "phone",
+      "tablet",
+      "2in1"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        // ★ 5.1.90：showAssetsCreationDialog 的硬性前置 —— 弹框要显示应用名/图标，
+        //   abilities 缺 label/icon 时系统直接让弹框失败（立即 reject，非超时）。
+        "label": "$string:EntryAbility_label",
+        // ★ 5.1.91：弹框要的 icon 保留，但资源从 ic_launcher（老圆形，5.1.83 已弃用）
+//   换成与 AppScope 同款的分层图标（方形双层， foreground+background）。
+        "icon": "$media:layered_image",
+        "startWindowIcon": "$media:ic_launcher",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+
+        // 刻意不声明 backgroundModes。
+        // 原方案挂的是 dataTransfer 长时任务，带「10 分钟无进度更新即取消 +
+        // 进度必须走实况窗」的硬约束。vivi 2026-09-30 决策：不做后台保活，
+        // 需要传输时手动打开应用，因此这里整体移除，同时也省掉一个授权弹窗。
+        "skills": [
+          {
+            // ★ 5.1.80：补 entity.system.share —— 有些分享入口是**按 entity 过滤**的，
+            //   只写 action 不写 entity 时，入口列表里仍可能不出现本应用。
+            "entities": ["entity.system.home", "entity.system.share"],
+            "actions": ["action.system.home"]
+          },
+          // ★★ 5.1.80 修 5.1.79 的「部分文件类型分享不到」：
+          //   5.1.79 只声明了 `general.object`，实测图库能弹、文件管理器的不弹。
+          //
+          // ## 病根（从 SDK 的 uniformTypeDescriptor.d.ts 抽出完整归属树实证）
+          //   UTD 有**三个互不包含的顶层根**：
+          //     general.object        子树 92 个 = 图片/视频/音频/文本（逻辑内容类型）
+          //     general.entity        子树  5 个 = file/directory/folder/symlink（物理存储类型）
+          //     general.tar-archive   子树  2 个 = taz-archive（独立第三棵树）
+          //   实测 `object ∩ entity = 空`。
+          //   而 docx/pdf/zip/doc/xlsx/pptx/apk 这些在 SDK 常量表里**没有条目**，
+          //   由系统按 MIME 动态生成，归属不可预知 ⇒ 只声明一个根必然漏一大片。
+          //
+          // ## 结论
+          //   `general.object` = **逻辑**内容类型，所以图库（给 general.image 系）能匹配上；
+          //   文件管理器给的物理文件不在 object 子树里 ⇒ 本应用不出现。
+          //   ⇒ 三个根都要声明。
+          //
+          // ★ 另外 action 必须是 ohos.want.action.sendData，否则系统不把本应用
+          //   列为分享目标；**写 type 不写 utd 也匹配不上**（Share Kit FAQ 点名过）。
+          {
+            "actions": ["ohos.want.action.sendData"],
+            "uris": [
+              {
+                // 根 1：逻辑内容类型（图片/视频/音频/文本）—— 图库分享走这条
+                "scheme": "file",
+                "utd": "general.object",
+                "maxFileSupported": 50
+              },
+              {
+                // 根 2：物理存储类型 —— 文件管理器分享 zip/docx/pdf 多半走这条
+                "scheme": "file",
+                "utd": "general.entity",
+                "maxFileSupported": 50
+              },
+              {
+                // 根 3：独立的压缩包树（既不在 object 也不在 entity 里）
+                "scheme": "file",
+                "utd": "general.tar-archive",
+                "maxFileSupported": 50
+              },
+              {
+                // 兜底：general.file 本身（general.entity 的子类型之一）
+                "scheme": "file",
+                "utd": "general.file",
+                "maxFileSupported": 50
+              },
+              {
+                // ★★ 5.1.84：链接/纯文本分享（vivi：「分享链接也不会弹窗」）。
+                //   前面 uris 里全是 utd + scheme:"file"，**全是文件形态的声明**，
+                //   所以「分享一个链接」时系统认为本应用不接这个类型 ⇒ 列表里不出现。
+                //   这里用 type 声明 text/plain 接住纯文本（含 URL）。
+                //   ⚠️ maxFileSupported 对文本不适用，不写。
+                "type": "text/plain"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+
+    // ----------------------------------------------------------------------
+    // 权限：Android 侧 20+ 权限的鸿蒙等价映射，完整对照见 docs/迁移对照表.md
+    // 已按「不做后台保活」精简掉 ohos.permission.KEEP_BACKGROUND_RUNNING
+    //
+    // 注意：requestPermissions 的每一项只允许 name / reason / usedScene /
+    // requiredFeature 四个键，写 "//": "..." 会被 schema 拒掉，注释只能用
+    // JSON5 原生的 // 行注释。
+    // ----------------------------------------------------------------------
+    "requestPermissions": [
+      {
+        // Socket（TCP Server / UDP 广播 / 组播）+ HTTP 客户端 -> Android INTERNET
+        "name": "ohos.permission.INTERNET",
+        "reason": "$string:reason_internet",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 读取网络状态、获取本机 IP 与子网掩码
+        // -> Android ACCESS_WIFI_STATE + ACCESS_NETWORK_STATE
+        "name": "ohos.permission.GET_NETWORK_INFO",
+        "reason": "$string:reason_network_info",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      // ★★ 5.3.4（合规）：**删除 CAMERA / NFC_TAG 两条声明**。
+      //   实证：全代码零引用（ScanKit/NfcKit 无 import，PermissionGate.CAMERA
+      //   常量无任何请求点）——「申请了用不上的敏感权限 = 违规收集」，
+      //   属于违规收集，会被驳回。B2 批次真要接扫码/NFC 时，随功能一起加回。
+      // ★★ 5.3.13（合规）：**再删 APPROXIMATELY_LOCATION / VIBRATE 两条声明**。
+      //   实证（vivi 2026-10-17：「我目前并没有遇到请求大致位置权限和振动提醒」）：
+      //   · LOCATION：PermissionGate.LOCATION 常量零引用，request()/ensureOne()
+      //     全工程零调用点（唯一外部调用是 supportsUserDownloadDir()，
+      //     那是 canIUse 能力探测、不是权限申请）⇒ 申请代码从不执行。
+      //   · VIBRATE：`vibrator|vibrate|startVibration` 全 ets 代码 **0 命中**
+      //     ⇒ 震动功能在代码里根本不存在。
+      //   两条都与 CAMERA / NFC_TAG / READ_WRITE_DOWNLOAD_DIRECTORY 同一性质：
+      //   声明而未使用 = 违规收集，会被驳回。
+      //   附带收益：权限从 4 项降到 **2 项**，且全是 system_grant，用户零弹窗。
+      // ★ 5.3.10：READ_WRITE_DOWNLOAD_DIRECTORY 声明已删除。
+      //   实证：该权限依赖的 SysCap（FolderObtain）官方仅 PC/2in1/平板提供，
+      //   **手机形态第一道能力门禁就没过，权限申请代码从不执行**（申请也只会
+      //   拿 authResult=2）；手机上的保存/导出全走系统文件选择器与相册弹框。
+      //   平板/2in1 上它只是「收到文件直存下载目录」的便利功能，删除后
+      //   FileStorage.tryDownloadDir 会走既有的 201 降级路径落沙箱，体验与手机一致。
+      //   附带收益：少一个受限 ACL 权限 ⇒ 发布 Profile 无需声明 ACL、
+      //   隐私政策少一项收集说明，少一个驳回面。
+      //   B 批次若要加回：随功能一起声明，并在发布 Profile 勾选对应受限权限。
+    ],
+
+  }
+}
+// 5.1.84 patched-by-fix_5184_share_ui_text.py
